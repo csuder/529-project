@@ -1,0 +1,138 @@
+% THIS IS SIGPROC-SP.TEX - VERSION 3.1
+% WORKS WITH V3.2SP OF ACM_PROC_ARTICLE-SP.CLS
+% APRIL 2009
+%
+% It is an example file showing how to use the 'acm_proc_article-sp.cls' V3.2SP
+% LaTeX2e document class file for Conference Proceedings submissions.
+% ----------------------------------------------------------------------------------------------------------------
+% This .tex file (and associated .cls V3.2SP) *DOES NOT* produce:
+%       1) The Permission Statement
+%       2) The Conference (location) Info information
+%       3) The Copyright Line with ACM data
+%       4) Page numbering
+% ---------------------------------------------------------------------------------------------------------------
+% It is an example which *does* use the .bib file (from which the .bbl file
+% is produced).
+% REMEMBER HOWEVER: After having produced the .bbl file,
+% and prior to final submission,
+% you need to 'insert'  your .bbl file into your source .tex file so as to provide
+% ONE 'self-contained' source file.
+%
+% Questions regarding SIGS should be sent to
+% Adrienne Griscti ---> griscti@acm.org
+%
+% Questions/suggestions regarding the guidelines, .tex and .cls files, etc. to
+% Gerald Murray ---> murray@hq.acm.org
+%
+% For tracking purposes - this is V3.1SP - APRIL 2009
+
+\documentclass{acm_proc_article-sp}
+
+\begin{document}
+
+\title{Irssi}
+\subtitle{Comp 521: milestone 2}
+
+\numberofauthors{3}
+\author{
+\alignauthor
+Benoit Hiller\\
+       \email{benoit.hiller@mail.mcgill.ca}\\       
+\alignauthor
+David Donna\\
+\alignauthor
+Chantal Suder
+}
+
+\date{18 February 2013}
+\maketitle
+
+% \begin{abstract}
+% In this report we provide a detailed analysis of the architecture of the irssi chat client. The introduction provides an overview of the specific function of the program then we dive down into each of its components.
+% \end{abstract}
+
+% \category{D.2.7}{Software Engineering}{Distribution, Maintenance, and Enhancement}[Documentation]
+
+% \terms{Software Architecture}
+
+\section{Introduction}
+Irssi(pronounced with a rolled R) is a Finnish terminal base IRC client. IRC is a chatroom based communication protocol, so irssi renders a number of chatrooms as different windows or tabs. The client is extremely configurable allowing you to arbitrarily reposition any of the UI elements, this includes the ability to tile the chatroom windows like in a simple window manager. The program also exposes the vast majority of its functionality through perl extensions which has resulted in a rich selection of plugins.
+
+\section{Architecture}
+\subsection{Core}
+The core of the program is very interesting because it provides a number of tools typically not available in C which greatly simplify the architecture of the program. These two additions are explicit modules, and signals. The module and signal components are very much cross cutting concerns, they are included in the majority of the program components.
+
+the signals code provides and interface to bind listeners to specific signals designated by string names. When the signal is fired the registered listener is called. This is used within the program to implement a host of patterns including: event based programming, observers and some aspect oriented programming.
+
+The module code is somewhat less important to the functioning of the program. It is mainly for bookkeeping purposes. Each of the modules contains a module.h file that has some of the module's shared dependencies and in some cases the module.h is used to define external methods but most of the time the files are nearly empty. What the modules do provide however is the ability to track and reload components that provide signals through some simple module registration and loading code.
+
+These two components are combined to provide a generally very clear separation of concerns. Each file typically represents only one entity and the concrete implementations are kept distinct from any generic code. For example:
+
+Server state is provided by the core in a file called server.c. This server state is completely generic and it interacts with the concrete implementation via signals. The code to save and load servers does not need to include the servers header files, it is able to do this entirely via signals to communicate with the server code. By keeping each of these components separate the server code does not depend on any of the IRC code or on any of the saving and loading code. The Uses interaction between them is also kept very simple as the server signals only need to be used by the components of other modules that specifically relate to servers as the other modules expose their own interfaces for relevant server methods internally.
+
+In addition to the above two components the core provides a wide array of system components. All of the network communication is done through a network.c component that provides a wrapper around sockets, settings.c provides a wrapper settings storage, log.c provides logging. These components are important because they represent a break from the signals based architecture. They provide traditional C interfaces and are used in a large number of modules and represent cross cutting concerns(within core typically a component does not contain both settings related functionality and other functionality but this is not always the case). These files seem to represent where the underlying implementation was likely to not change often and where normal C methods provide some slight gains in usability over the signals(which can be hard to follow).
+
+\subsection{IRC}
+
+The IRC module provides the logic of the IRC protocol. Meaning that it receives signals from the network code, it parses them and then it tells the internal data objects and UI what to do via signals.
+
+The protocol is split up into a number of submodules. With the core for parsing, DCC providing the client to client protocol that is built on top of IRC, flood providing flood detection (throttling of communication speed with server because it is easy to get kicked from a server for talking to quickly) and proxying. These modules form a sort of pipeline for the incoming messages, with incoming messages going through proxy > IRC > DCC and the outgoing go through DCC > IRC > flood > proxy. This pipeline is a natural consequence of how the IRC protocol functions and it provides us with a nice clean separation between the modules.
+
+The IRC module is composed almost entirely of connectors with the other components. It's component and connector view provides a very interesting overview of the system.
+\includegraphics[scale=0.3]{../Downloads/c+c.png} 
+
+\subsection{Frontend}
+
+Frontend is composed of three components. There is fe-common, fe-none and fe-text. The fe-text module is the actual command line frontend and contains the code for rendering generic frontend elements onto the command line. fe-none is the code to run irssi without a frontend, such as just to use the perl interface.
+
+fe-common is the actual core of the frontend and includes how the frontend is mapped onto the the other components of the program. It is split into a core and an IRC component. The IRC component being tailored specifically to represent entities that exist int the IRC protocol. These components being the queries (direct messages), channels and the server connections.
+
+The core module contains the code to represent frontend entities such as:
+\begin{itemize}
+
+	\item messages
+	\item modules
+	\item queries
+	\item channels
+	\item servers
+
+\end{itemize}
+The core here does correspond with the text frontend for a number of things. Namely the rendering of:
+\begin{itemize}
+	\item text highlighting
+	\item themes
+	\item windows
+\end{itemize}
+
+The division of the frontend core into irc and core provides a number of benefits with respect to modularity. Namely that it allows other protocols to be implemented in such a way that allows reuse of much of the frontend code.
+
+The fe-text component contains the implementations of various interface components such as the statusbars, windows, textbuffers, etc. Plus there are the generic methods for implementing these components.
+
+The interaction between the core and the frontend is very simple.
+
+\includegraphics[scale=0.3]{../Downloads/milestone2 529 (1).png} 
+
+\subsection{Perl}
+The perl module is a large number of perl extension files that provide perl methods to correspond to the signals and a number of the utility methods.
+
+
+\section{Procedure}
+
+The project only has a small number of top level modules and the interactions between those modules appeared to be fairly straightforward to reason about. We thus split the 3 main modules between the 3 of us and compiled the results afterwards along with an analysis of how these components plug into the other two smaller modules.
+
+We prepared a ruby script to generate diagrams from the includes in c and h files of the code as these mapped very cleanly to the actual dependencies within the code (we do not as of yet have a tool to explore the uses relationship between signals and their handlers).
+
+\section{Discussion}
+
+The structure of the program makes excessive use of event based C\&C, at some times to the point of providing AOP like functionality. This keeps the concerns of the program very cleanly separated and provides us with a number of quality attributes, namely: modifiability and interoperability. However the fact that everything is so modifiable actually has a significant impact on usability.
+
+Starting up irssi is very confusing, there are any number of ways that you can use it and the complex text based interface makes it hard to understand what is going on until you get some introduction to how the system works. For example you can add arbitrary content to the status bar at the top of a window, if a user want to go and add user counts to this bar he has to understand the obscure syntax for configuring the entire bar.
+
+However the high degree of modifiability allows you to switch out any component of irssi trivially. If you wanted to support the skype protocol(which has copied a lot from IRC with its group chat), all you would need to do is write a new protocol module that would be switched out with the irc module. Such a component would be able to reuse all of the existing UI elements just by connecting to the correct signals.
+
+When irssi does choose to implement things without using signals. It does provide some performance benefit. Using a central network module prevents all of the network communication the program does from going through an additional layer of redirection, which would require a lot of resources to do nothing. Similarly the shared settings code allows all of the settings to be implemented with a single hash table. This gives you a very nice O(1) lookup on any setting from any module.
+
+\nocite{*}
+\balancecolumns
+
+\end{document}
